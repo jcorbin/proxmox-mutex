@@ -12,9 +12,9 @@ Let's say we have
   - VM 101 is a Windows VM for gaming
   - VM 102 is a Linux VM for productivity
 
-## Problem: hardward conflict between main guest VMs
+## Problem: hardware conflict between main guest VMs
 
-Without any additional setup, what one must do to swith between VM 101 and 102
+Without any additional setup, what one must do to switch between VM 101 and 102
 is: to first stop one, wait, and then start the other.
 
 In other words, the best one can do is to issue a command like `qm shutdown 102
@@ -26,7 +26,7 @@ We can start to do better by automating the "shutdown any conflicting VMs" part.
 
 This can be achieved during the `pre-start` phase of a [qm] hookscript.
 
-The `qmexmut.go` tool in this repository currently implemnts just that.
+The `qmexmut.go` tool in this repository currently implements just that.
 It does so by finding any overlap of `hostpciX: ...` or `usbX: host=...`
 configuration in the VM that's trying to start, and any currently running VMs.
 So there's no need for static rules to be configured like "stop X before
@@ -44,7 +44,7 @@ To install qmexmut:
     all involved VMs (101 and 102 in our example here)
 
 After this point, now you can simply start each VM, and it will first shutdown
-any confliciting siblings. So the `qm shutdown 102 && qm start 101` above can
+any conflicting siblings. So the `qm shutdown 102 && qm start 101` above can
 just be `qm start 101`.
 
 # TODO
