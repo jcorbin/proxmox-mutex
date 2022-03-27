@@ -86,7 +86,7 @@ func stopMutuals(vmid string) error {
 }
 
 var (
-	listPat    = regexp.MustCompile(`(\d+)\s+(.+?)\s+(.+?)\s+`)
+	listPat    = regexp.MustCompile(`([^\s]+)\s+(.+?)\s+(.+?)\s+`)
 	usbHostPat = regexp.MustCompile(`\bhost=([^,]+)`)
 	statusPat  = regexp.MustCompile(`status:\s*(.+)`)
 	keyValPat  = regexp.MustCompile(`(.+?):\s*(.+)`)
