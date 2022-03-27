@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -15,6 +16,8 @@ import (
 
 	"golang.org/x/sync/errgroup"
 )
+
+const hookCmdName = "qmexmut.hook"
 
 func main() {
 	cmdName := path.Base(flag.CommandLine.Name())
@@ -40,8 +43,12 @@ func run(cmdName string) error {
 		return runRemote(*server, flag.Args())
 	}
 
-	// TODO switch cmdName
-	return runHook(cmdName, flag.Args())
+	switch cmdName {
+	case hookCmdName:
+		return runHook(cmdName, flag.Args())
+	default:
+		return runInit(flag.Args())
+	}
 }
 
 // runRemote executes the currently ran executable on a remote ssh server with
@@ -83,6 +90,95 @@ func runRemote(server string, args []string) (rerr error) {
 	return copySelfInto(in)
 }
 
+// runInit installes the current executable into proxmox snippets storage, and
+// then sets that snippet as hookscript for any VMs that have host hardware
+// passed through.
+func runInit(args []string) error {
+	snippetStore, storeDir, err := findSnippets()
+	if err != nil {
+		return err
+	}
+
+	hookScript := fmt.Sprintf("%s:snippets/%s", snippetStore, hookCmdName)
+	hookDest := path.Join(storeDir, "snippets", hookCmdName)
+
+	if dryRun {
+		log.Printf("would copy self execuable to %q", hookDest)
+	} else {
+		if err := copySelfTo(hookDest); err != nil {
+			return err
+		}
+		log.Printf("copied self execuable to %q", hookDest)
+	}
+
+	g := new(errgroup.Group)
+	g.Go(func() error {
+		cmm := matchCommand(exec.Command("qm", "list"), listPat)
+		cmm.Scan() // skip first (header) line
+		for cmm.Scan() {
+			id := cmm.MatchText(1)
+			g.Go(func() error {
+				if should, err := shouldHook(id); err != nil || !should {
+					return err
+				}
+				return maybeRun("qm", "set", id, "--hookscript", hookScript)
+			})
+		}
+		return cmm.Err()
+	})
+	return g.Wait()
+}
+
+func findSnippets() (store, dir string, _ error) {
+	var stores []struct {
+		Name    string `json:"storage"`
+		Content string `json:"content"`
+		Path    string `json:"path"`
+	}
+
+	if err := decodeJSONCommand(
+		&stores,
+		exec.Command("pvesh", "get", "/storage", "--output-format", "json"),
+	); err != nil {
+		return "", "", err
+	}
+
+	for _, st := range stores {
+		if st.Path == "" {
+			continue
+		}
+		if !hasString("snippets", strings.Split(st.Content, ",")) {
+			continue
+		}
+
+		store = st.Name
+		dir = st.Path
+		break
+	}
+	return store, dir, nil
+}
+
+func shouldHook(id string) (bool, error) {
+	rec := recognizeCommand(exec.Command("qm", "config", id), keyValPat, labelHostResource)
+	if rec.Scan() {
+		return true, nil
+	}
+	return false, rec.Err()
+}
+
+func copySelfTo(dest string) (rerr error) {
+	f, err := os.OpenFile(dest, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0777)
+	if err != nil {
+		return fmt.Errorf("unable to create %q: %w", dest, err)
+	}
+	defer func() {
+		if err := f.Close(); rerr == nil {
+			rerr = err
+		}
+	}()
+	return copySelfInto(f)
+}
+
 func copySelfInto(dst io.Writer) (rerr error) {
 	selfExe, err := os.Executable()
 	if err != err {
@@ -99,6 +195,15 @@ func copySelfInto(dst io.Writer) (rerr error) {
 		return fmt.Errorf("failed to copy self executable: %w", err)
 	}
 	return nil
+}
+
+func hasString(wanted string, ss []string) bool {
+	for _, s := range ss {
+		if s == wanted {
+			return true
+		}
+	}
+	return false
 }
 
 // runHook provides proxmox hookscript logic when dispatched by runHook based
@@ -266,6 +371,31 @@ func maybeRun(args ...string) error {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
+}
+
+func decodeJSONCommand(val interface{}, cmd *exec.Cmd) error {
+	rc, err := cmd.StdoutPipe()
+	if err != nil {
+		return fmt.Errorf("failed to stdout pipe: %w", err)
+	}
+
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("failed to start %q: %w", cmd.Args, err)
+	}
+
+	dec := json.NewDecoder(rc)
+	err = dec.Decode(val)
+	werr := cmd.Wait()
+
+	if err != nil {
+		return fmt.Errorf("failed to decode json from %q: %w", cmd.Args, err)
+	}
+
+	if werr != nil {
+		return fmt.Errorf("%q failed: %w", cmd.Args, err)
+	}
+
+	return nil
 }
 
 // scanCommand creates a scanner bound to a running exec.Cmd.
