@@ -50,6 +50,8 @@ func run(cmdName string) error {
 		cmdName = *cmdFlag
 	}
 
+	// TODO run thru sudo if necessary
+
 	switch cmdName {
 	case hookCmdName:
 		return runHook(cmdName, flag.Args())
