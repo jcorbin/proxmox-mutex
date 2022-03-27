@@ -9,7 +9,8 @@ import (
 	"os/exec"
 	"regexp"
 	"strings"
-	"sync"
+
+	"golang.org/x/sync/errgroup"
 )
 
 func main() {
@@ -53,36 +54,20 @@ func stopMutuals(vmid string) error {
 	if err != nil {
 		return err
 	}
-
-	// TODO better off as an x/sync/errgroup
-	errch := make(chan error, 1)
-	var wg sync.WaitGroup
+	g := new(errgroup.Group)
 	for _, mutual := range mutualRecs {
 		switch mutual.status {
 		case "running":
-			wg.Add(1)
-			go func(id string) {
-				defer wg.Done()
-				if err := maybeRun("qm", "shutdown", id); err != nil {
-					select {
-					case errch <- err:
-					default:
-					}
-				}
-			}(mutual.id)
+			id := mutual.id
+			g.Go(func() error {
+				return maybeRun("qm", "shutdown", id)
+			})
 		case "stopped":
 		default:
 			log.Printf("not stopping mutual %q in unknown state %q", mutual.id, mutual.status)
 		}
 	}
-	wg.Wait()
-	select {
-	case err := <-errch:
-		return err
-	default:
-	}
-
-	return nil
+	return g.Wait()
 }
 
 var (
