@@ -4,11 +4,13 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/exec"
 	"path"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"golang.org/x/sync/errgroup"
@@ -24,10 +26,79 @@ func main() {
 // run provides command dispatch and flag parsing logic for main(),
 // returning an error to log on failure.
 func run(cmdName string) error {
+	server := flag.String("ssh", "", "upload to and execute on remote host using ssh")
+	rmSelf := flag.Bool("rm", false, "remove self executable once done")
 	flag.Parse()
+
+	if *rmSelf {
+		if selfExe, err := os.Executable(); err == nil {
+			defer os.Remove(selfExe)
+		}
+	}
+
+	if *server != "" {
+		return runRemote(*server, flag.Args())
+	}
 
 	// TODO switch cmdName
 	return runHook(cmdName, flag.Args())
+}
+
+// runRemote executes the currently ran executable on a remote ssh server with
+// all positional args passed along.
+func runRemote(server string, args []string) (rerr error) {
+	log.Printf("running on remote %q", server)
+
+	sshArgs := []string{
+		server, "sh", "-c",
+		"'self=`mktemp` && cat >$self && chmod +x $self && exec $self -rm \"$@\"'",
+		"--",
+	}
+	for _, arg := range args {
+		sshArgs = append(sshArgs, strconv.Quote(arg))
+	}
+
+	cmd := exec.Command("ssh", sshArgs...)
+	in, err := cmd.StdinPipe()
+	if err != nil {
+		return fmt.Errorf("failed to stdin pipe: %w", err)
+	}
+
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("failed to start ssh: %w", err)
+	}
+
+	defer func() {
+		if err := cmd.Wait(); rerr == nil && err != nil {
+			rerr = fmt.Errorf("remote self failed: %w", err)
+		}
+		if err := in.Close(); rerr == nil && err != nil {
+			rerr = fmt.Errorf("failed to close in: %w", err)
+		}
+	}()
+
+	return copySelfInto(in)
+}
+
+func copySelfInto(dst io.Writer) (rerr error) {
+	selfExe, err := os.Executable()
+	if err != err {
+		return fmt.Errorf("unable to get self executable: %w", err)
+	}
+
+	self, err := os.Open(selfExe)
+	if err != err {
+		return fmt.Errorf("unable to open self executable: %w", err)
+	}
+	defer self.Close()
+
+	if _, err := io.Copy(dst, self); err != nil {
+		return fmt.Errorf("failed to copy self executable: %w", err)
+	}
+	return nil
 }
 
 // runHook provides proxmox hookscript logic when dispatched by runHook based
