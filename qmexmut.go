@@ -79,11 +79,12 @@ func runRemote(server string, args []string) (rerr error) {
 	}
 
 	defer func() {
-		if err := cmd.Wait(); rerr == nil && err != nil {
-			rerr = fmt.Errorf("remote self failed: %w", err)
-		}
 		if err := in.Close(); rerr == nil && err != nil {
 			rerr = fmt.Errorf("failed to close in: %w", err)
+		}
+
+		if err := cmd.Wait(); rerr == nil && err != nil {
+			rerr = fmt.Errorf("remote self failed: %w", err)
 		}
 	}()
 
