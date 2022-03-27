@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"path"
 	"regexp"
 	"strings"
 
@@ -14,15 +15,24 @@ import (
 )
 
 func main() {
-	flag.Parse()
-	if err := run(flag.CommandLine.Name(), flag.Args()); err != nil {
+	cmdName := path.Base(flag.CommandLine.Name())
+	if err := run(cmdName); err != nil {
 		log.Fatal(err)
 	}
 }
 
-// run provides core logic for main() after flag parsing, providing an error to
-// log on failure.
-func run(progName string, args []string) error {
+// run provides command dispatch and flag parsing logic for main(),
+// returning an error to log on failure.
+func run(cmdName string) error {
+	flag.Parse()
+
+	// TODO switch cmdName
+	return runHook(cmdName, flag.Args())
+}
+
+// runHook provides proxmox hookscript logic when dispatched by runHook based
+// on the command name. returning an error to log on failure.
+func runHook(progName string, args []string) error {
 	if len(args) < 2 {
 		return fmt.Errorf("usage: %s <vmid> <phase>", progName)
 	}
