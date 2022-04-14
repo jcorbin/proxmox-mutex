@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -13,6 +14,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"golang.org/x/sync/errgroup"
 )
@@ -525,7 +527,11 @@ func (csc *cmdScanner) Err() error {
 
 func (csc *cmdScanner) Cleanup(errp *error) {
 	if csc.cmd.Process != nil {
+		_ = csc.cmd.Process.Kill()
 		werr := csc.cmd.Wait()
+		if isKillError(werr) {
+			werr = nil // expected from Process.Kill() above
+		}
 		if err := csc.Err(); err == nil {
 			csc.err = werr
 		}
@@ -533,6 +539,15 @@ func (csc *cmdScanner) Cleanup(errp *error) {
 	if err := csc.Err(); err != nil && errp != nil && *errp == nil {
 		*errp = fmt.Errorf("command %q failed: %w", csc.cmd.Args, err)
 	}
+}
+
+func isKillError(err error) bool {
+	var xerr *exec.ExitError
+	if errors.As(err, &xerr) {
+		status, haveStatus := xerr.ProcessState.Sys().(syscall.WaitStatus)
+		return haveStatus && status.Signaled() && status.Signal() == syscall.SIGKILL
+	}
+	return false
 }
 
 func (csc *cmdScanner) Scan() bool {
