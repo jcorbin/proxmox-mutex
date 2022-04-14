@@ -214,6 +214,8 @@ func hasString(wanted string, ss []string) bool {
 // runHook provides proxmox hookscript logic when dispatched by runHook based
 // on the command name. returning an error to log on failure.
 func runHook(progName string, args []string) error {
+	log.Printf("hook %v %q", progName, args)
+
 	if len(args) < 2 {
 		return fmt.Errorf("usage: %s <vmid> <phase>", progName)
 	}
