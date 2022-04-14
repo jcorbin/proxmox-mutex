@@ -167,7 +167,7 @@ func findSnippets() (store, dir string, _ error) {
 }
 
 func shouldHook(id string) (bool, error) {
-	rec := recognizeCommand(exec.Command("qm", "config", id), keyValPat, labelHostResource)
+	rec := resourceRecognizer(id)
 	return rec.Scan(), rec.Err()
 }
 
@@ -334,7 +334,7 @@ func labelHostResource(cmm *cmdMatcher) string {
 }
 
 func hostResources(id string) (_ map[string]struct{}, rerr error) {
-	rec := recognizeCommand(exec.Command("qm", "config", id), keyValPat, labelHostResource)
+	rec := resourceRecognizer(id)
 	defer rec.Cleanup(&rerr)
 	reses := make(map[string]struct{})
 	for rec.Scan() {
@@ -344,7 +344,7 @@ func hostResources(id string) (_ map[string]struct{}, rerr error) {
 }
 
 func sharesHostResources(id string, reses map[string]struct{}) (hasAny bool, rerr error) {
-	rec := recognizeCommand(exec.Command("qm", "config", id), keyValPat, labelHostResource)
+	rec := resourceRecognizer(id)
 	defer rec.Cleanup(&rerr)
 	for rec.Scan() {
 		if _, has := reses[rec.Label()]; has {
@@ -352,6 +352,10 @@ func sharesHostResources(id string, reses map[string]struct{}) (hasAny bool, rer
 		}
 	}
 	return false, nil
+}
+
+func resourceRecognizer(id string) *cmdRecognizer {
+	return recognizeCommand(exec.Command("qm", "config", id), keyValPat, labelHostResource)
 }
 
 //// command running utilities
