@@ -354,8 +354,12 @@ func sharesHostResources(id string, reses map[string]struct{}) (hasAny bool, rer
 	return false, nil
 }
 
+func configMatcher(id string) *cmdMatcher {
+	return matchCommand(exec.Command("qm", "config", id), keyValPat)
+}
+
 func resourceRecognizer(id string) *cmdRecognizer {
-	return recognizeCommand(exec.Command("qm", "config", id), keyValPat, labelHostResource)
+	return recognizeCommand(configMatcher(id), labelHostResource)
 }
 
 //// command running utilities
@@ -447,16 +451,12 @@ func matchCommandOnce(cmd *exec.Cmd, pat *regexp.Regexp) (_ string, rerr error) 
 // has returned a non-empty label; it keeps calling underlying Scan() until
 // such a label has been recognized.
 func recognizeCommand(
-	cmd *exec.Cmd,
-	pat *regexp.Regexp,
+	cmm *cmdMatcher,
 	rec func(cmm *cmdMatcher) string,
 ) *cmdRecognizer {
 	return &cmdRecognizer{
-		cmdMatcher: cmdMatcher{
-			cmdScanner: cmdScanner{cmd: cmd},
-			pat:        pat,
-		},
-		rec: rec,
+		cmdMatcher: *cmm,
+		rec:        rec,
 	}
 }
 
