@@ -51,10 +51,6 @@ just be `qm start 101`.
 
 - implement automatic installation of `qmexmut` so that the above install
   advice can be boiled down to "just build it, upload it, and run it"
-- implement automatic toggling of `onboot` config so that the last started
-  guest VM is the one that will restart on host reboot; i.e. if you poweroff
-  with the Linux guest booted, that should be what bets started on reboot, not
-  the Windows guest
 - if it's possible to detect "guest shutdown voluntarily", we could boot up the
   other/last/next sibling for fast swapping trigger from withing a guest
 - alternatively, it'd be neat to leverage something like a macro pad attached

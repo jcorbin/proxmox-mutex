@@ -225,7 +225,7 @@ func runHook(progName string, args []string) error {
 		return stopMutuals(vmid)
 
 	case "post-start":
-		// TODO update qm set -onboot
+		return claimMutualOnboot(vmid) // start the last one started on boot
 
 	case "pre-stop":
 
@@ -236,6 +236,71 @@ func runHook(progName string, args []string) error {
 	}
 
 	return nil
+}
+
+// claimMutualOnboot transfers exclusive ownership of -onboot status withing a
+// group of mutually exclusive vms.
+func claimMutualOnboot(id string) error {
+	willIBoot, err := willBoot(id)
+	if err != nil {
+		return err
+	}
+
+	mutualRecs, err := mutuals(id)
+	if err != nil {
+		return err
+	}
+
+	willMutualBoot := make([]bool, len(mutualRecs))
+	willAnyMutualBoot := false
+	for i, mutual := range mutualRecs {
+		willTheyBoot, err := willBoot(mutual.id)
+		if err != nil {
+			return err
+		}
+		willMutualBoot[i] = willTheyBoot
+		willAnyMutualBoot = willAnyMutualBoot || willTheyBoot
+	}
+
+	if !willAnyMutualBoot {
+		return nil
+	}
+
+	if !willIBoot {
+		if err := maybeRun("qm", "set", id, "-onboot", "1"); err != nil {
+			return err
+		}
+	}
+
+	for i, willTheyBoot := range willMutualBoot {
+		if !willTheyBoot {
+			continue
+		}
+		if err := maybeRun("qm", "set", mutualRecs[i].id, "-onboot", "0"); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func willBoot(id string) (will bool, rerr error) {
+	rec := configMatcher(id)
+	defer rec.Cleanup(&rerr)
+	for rec.Scan() {
+		key := rec.MatchText(1)
+		if key != "onboot" {
+			continue
+		}
+		val := rec.MatchText(2)
+		n, err := strconv.ParseInt(val, 10, strconv.IntSize)
+		if err != nil {
+			// TODO ideally this would be a multi-line "verbose error"
+			return false, fmt.Errorf("invalid -onboot config for vm #%v: %w; line:%q", id, err, rec.Bytes())
+		}
+		return n != 0, nil
+	}
+	return false, nil
 }
 
 // stopMutuals shuts down any running VMs that share host resources like
