@@ -31,6 +31,7 @@ func main() {
 func run(cmdName string) error {
 	server := flag.String("ssh", "", "upload to and execute on remote host using ssh")
 	rmSelf := flag.Bool("rm", false, "remove self executable once done")
+	cmdFlag := flag.String("cmd", "", "overide argv[0] command name")
 	flag.Parse()
 
 	if *rmSelf {
@@ -41,6 +42,10 @@ func run(cmdName string) error {
 
 	if *server != "" {
 		return runRemote(*server, flag.Args())
+	}
+
+	if *cmdFlag != "" {
+		cmdName = *cmdFlag
 	}
 
 	switch cmdName {
