@@ -343,6 +343,20 @@ type listRec struct {
 	status string
 }
 
+func logList() error {
+	cmm := matchCommand(exec.Command("qm", "list"), listPat)
+	cmm.Scan() // skip first (header) line
+	i := 0
+	for cmm.Scan() {
+		id := cmm.MatchText(1)
+		name := cmm.MatchText(2)
+		status := cmm.MatchText(3)
+		i++
+		log.Printf("qm list [%v] id:%q name:%q status:%q", i, id, name, status)
+	}
+	return cmm.Err()
+}
+
 func mutuals(id string) (mutualIds []listRec, _ error) {
 	res, err := hostResources(id)
 	if err != nil {
