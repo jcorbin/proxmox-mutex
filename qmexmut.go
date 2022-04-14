@@ -331,26 +331,25 @@ func labelHostResource(cmm *cmdMatcher) string {
 	return ""
 }
 
-func hostResources(id string) (map[string]struct{}, error) {
+func hostResources(id string) (_ map[string]struct{}, rerr error) {
 	rec := recognizeCommand(exec.Command("qm", "config", id), keyValPat, labelHostResource)
+	defer rec.Cleanup(&rerr)
 	reses := make(map[string]struct{})
 	for rec.Scan() {
 		reses[rec.Label()] = struct{}{}
 	}
-	if err := rec.Wait(); err != nil {
-		return nil, err
-	}
 	return reses, nil
 }
 
-func sharesHostResources(id string, reses map[string]struct{}) (bool, error) {
+func sharesHostResources(id string, reses map[string]struct{}) (hasAny bool, rerr error) {
 	rec := recognizeCommand(exec.Command("qm", "config", id), keyValPat, labelHostResource)
+	defer rec.Cleanup(&rerr)
 	for rec.Scan() {
 		if _, has := reses[rec.Label()]; has {
-			return true, rec.Wait()
+			return true, nil
 		}
 	}
-	return false, rec.Wait()
+	return false, nil
 }
 
 //// command running utilities
@@ -403,9 +402,9 @@ func decodeJSONCommand(val interface{}, cmd *exec.Cmd) error {
 
 // scanCommand creates a scanner bound to a running exec.Cmd.
 // The command is auto started on first call to Scan().
-// After Scan() returns false, Wait() should be called to cleanup and return
-// any error encountered.
-// Wait() may be called early if stopping once a "enough" input has been scanned.
+// After Scan() returns false, Cleanup() should be deferred to cleanup and
+// return any error encountered.
+// Cleanup() may be called early if stopping once a "enough" input has been scanned.
 func scanCommand(cmd *exec.Cmd) *cmdScanner {
 	return &cmdScanner{cmd: cmd}
 }
@@ -426,13 +425,14 @@ func matchCommand(
 
 // matchCommandOnce returns any first match from running a command, along with
 // any final error.
-func matchCommandOnce(cmd *exec.Cmd, pat *regexp.Regexp) (string, error) {
+func matchCommandOnce(cmd *exec.Cmd, pat *regexp.Regexp) (_ string, rerr error) {
 	cmm := cmdMatcher{
 		cmdScanner: cmdScanner{cmd: cmd},
 		pat:        pat,
 	}
+	defer cmm.Cleanup(&rerr)
 	cmm.Scan()
-	return cmm.MatchText(1), cmm.Wait()
+	return cmm.MatchText(1), nil
 }
 
 // recognizeCommand creates a matcher with a recognition function that is
@@ -523,19 +523,16 @@ func (csc *cmdScanner) Err() error {
 	return err
 }
 
-func (csc *cmdScanner) Wait() error {
-	if csc.cmd.Process == nil {
-		return nil
+func (csc *cmdScanner) Cleanup(errp *error) {
+	if csc.cmd.Process != nil {
+		werr := csc.cmd.Wait()
+		if err := csc.Err(); err == nil {
+			csc.err = werr
+		}
 	}
-	err := csc.Err()
-	if werr := csc.cmd.Wait(); err == nil {
-		err = werr
-		csc.err = werr
+	if err := csc.Err(); err != nil && errp != nil && *errp == nil {
+		*errp = fmt.Errorf("command %q failed: %w", csc.cmd.Args, err)
 	}
-	if err != nil {
-		err = fmt.Errorf("command %q failed: %w", csc.cmd.Args, err)
-	}
-	return err
 }
 
 func (csc *cmdScanner) Scan() bool {
