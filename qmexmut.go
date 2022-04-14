@@ -166,10 +166,7 @@ func findSnippets() (store, dir string, _ error) {
 
 func shouldHook(id string) (bool, error) {
 	rec := recognizeCommand(exec.Command("qm", "config", id), keyValPat, labelHostResource)
-	if rec.Scan() {
-		return true, nil
-	}
-	return false, rec.Err()
+	return rec.Scan(), rec.Err()
 }
 
 func copySelfTo(dest string) (rerr error) {
