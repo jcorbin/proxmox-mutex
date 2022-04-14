@@ -96,7 +96,7 @@ func runRemote(server string, args []string) (rerr error) {
 	return copySelfInto(in)
 }
 
-// runInit installes the current executable into proxmox snippets storage, and
+// runInit installs the current executable into proxmox snippets storage, and
 // then sets that snippet as hookscript for any VMs that have host hardware
 // passed through.
 func runInit(args []string) error {
